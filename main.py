@@ -1,61 +1,46 @@
 import yfinance as yf
 import requests
-import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
-# หุ้น 4 กลุ่มที่เราเฝ้าดู
-STOCKS = {
-    'ADVANC.BK': 'ICT (AIS)',
-    'TISCO.BK': 'Banking',
-    'BDMS.BK': 'Healthcare',
-    'PTT.BK': 'Energy'
-}
+# --- ตั้งค่าพื้นฐาน ---
+TOKEN = 'YOUR_LINE_OR_TELEGRAM_TOKEN' # ใส่ Token ของคุณตรงนี้
+stocks = ['ADVANC.BK', 'TISCO.BK', 'BDMS.BK', 'PTT.BK']
 
-# ความฉลาด: เตือนด่วนเฉพาะเมื่อราคาเหวี่ยงเกิน 3% เท่านั้น
-ALERT_THRESHOLD = 3.0 
+def send_message(msg):
+    print(f"Sending: {msg}")
+    # ใส่โค้ดส่ง Line/Telegram ของคุณที่นี่
 
-def send_telegram(message):
-    token = os.getenv('TELEGRAM_TOKEN')
-    chat_id = os.getenv('TELEGRAM_CHAT_ID')
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    try:
-        requests.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"}, timeout=15)
-    except:
-        print("Network error")
+def check_stock_and_dividends():
+    for symbol in stocks:
+        stock = yf.Ticker(symbol)
+        
+        # 1. ดึงข้อมูลราคาปัจจุบัน (ของเดิม)
+        data = stock.history(period='2d')
+        if len(data) < 2: continue
+        
+        current_price = data['Close'].iloc[-1]
+        prev_price = data['Close'].iloc[-0]
+        change_pct = ((current_price - prev_price) / prev_price) * 100
+        
+        # 2. ดึงข้อมูลปันผล (เพิ่มใหม่!)
+        info = stock.info
+        ex_date_timestamp = info.get('exDividendDate')
+        div_rate = info.get('dividendRate', 0)
+        
+        # ตรวจสอบแจ้งเตือนด่วน (ราคาเปลี่ยน > 3%)
+        if abs(change_pct) >= 3.0:
+            emoji = '🔥' if change_pct > 0 else '🚨'
+            send_message(f"⚠️ แจ้งเตือนด่วน: {symbol}\nราคา: {current_price:.2f} ({change_pct:+.2f}%){emoji}")
 
-def monitor():
-    # เวลาไทย (UTC+7)
-    now_hour = (datetime.utcnow().hour + 7) % 24
-    summary = []
-    urgent_alerts = []
+        # ตรวจสอบแจ้งเตือน XD (เตือนล่วงหน้า 7 วัน)
+        if ex_date_timestamp:
+            ex_date = datetime.fromtimestamp(ex_date_timestamp)
+            days_to_xd = (ex_date - datetime.now()).days
+            
+            if 0 <= days_to_xd <= 7:
+                send_message(f"📢 แจ้งเตือนปันผล! {symbol}\n📅 วันขึ้น XD: {ex_date.strftime('%d/%m/%Y')}\n💰 ปันผล: {div_rate} บาท/หุ้น\n⏳ อีก {days_to_xd} วันสุดท้าย!")
 
-    for symbol, group in STOCKS.items():
-        try:
-            ticker = yf.Ticker(symbol)
-            df = ticker.history(period='2d')
-            if len(df) < 2: continue
-
-            current = df['Close'].iloc[-1]
-            prev = df['Close'].iloc[-2]
-            diff = ((current - prev) / prev) * 100
-
-            summary.append(f"• {symbol}: {current:.2f} ({diff:+.2f}%)")
-
-            # แจ้งเตือนด่วนถ้าขยับแรงเกิน 3%
-            if abs(diff) >= ALERT_THRESHOLD:
-                icon = "🔥" if diff > 0 else "🚨"
-                urgent_alerts.append(f"{icon} <b>{symbol} ขยับแรง!</b>\nราคา: {current:.2f} ({diff:+.2f}%)")
-        except:
-            continue
-
-    # ส่งสรุปเช้า (10:00) และ เย็น (17:00) ตามเวลาไทย
-    if now_hour == 10 or now_hour == 17:
-        header = "<b>🔔 เปิดตลาดเช้า</b>\n" if now_hour == 10 else "<b>📝 สรุปตลาดปิด</b>\n"
-        send_telegram(header + "\n".join(summary))
-
-    # ถ้ามีเหตุการณ์ด่วน ส่งทันที
-    if urgent_alerts:
-        send_telegram("⚠️ <b>แจ้งเตือนด่วน:</b>\n" + "\n".join(urgent_alerts))
-
-if __name__ == "__main__":
-    monitor()
+# --- ส่วนของการตั้งเวลารัน ---
+now = datetime.utcnow() + timedelta(hours=7) # เวลาไทย
+if now.hour == 10 or now.hour == 17:
+    check_stock_and_dividends()
