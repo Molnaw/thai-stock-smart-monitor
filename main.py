@@ -2,11 +2,11 @@ import yfinance as yf
 import requests
 from datetime import datetime
 
-# --- ข้อมูลการเชื่อมต่อ (ดึงมาจากโปรเจกต์เก่าของคุณ) ---
-TOKEN = "7052912444:AAHh9-97_F8KIDRAsu66fH-vR69piz355jI"
-CHAT_ID = "1328994508"
+# --- ข้อมูลการเชื่อมต่อที่คุณให้มาใหม่ ---
+TOKEN = "7508299140:AAGpdtv8z_ZBUB1eTT7DKwjTqUMFZ8xQJmE"
+CHAT_ID = "8178648877"
 
-# รายชื่อหุ้นที่ต้องการเฝ้าดู
+# รายชื่อหุ้นเป้าหมาย
 stocks = ['ADVANC.BK', 'TISCO.BK', 'BDMS.BK', 'PTT.BK']
 
 def send_telegram(message):
@@ -14,7 +14,10 @@ def send_telegram(message):
     payload = {"chat_id": CHAT_ID, "text": message}
     try:
         response = requests.post(url, json=payload)
-        print(f"Status: {response.status_code}")
+        if response.status_code == 200:
+            print("✅ ส่งข้อความสำเร็จ!")
+        else:
+            print(f"❌ ส่งไม่สำเร็จ: {response.text}")
     except Exception as e:
         print(f"Error: {e}")
 
@@ -25,7 +28,7 @@ def check_stocks():
     
     for symbol in stocks:
         stock = yf.Ticker(symbol)
-        # ดึงราคาปัจจุบันและราคาปิดวันก่อน
+        # ดึงราคาปัจจุบัน
         df = stock.history(period="2d")
         if not df.empty and len(df) >= 2:
             current_price = df['Close'].iloc[-1]
@@ -45,6 +48,6 @@ def check_stocks():
     
     send_telegram(report)
 
-# สั่งให้ทำงานทันทีทุกครั้งที่รัน
+# สั่งให้ทำงานทันทีทุกครั้งที่กดรัน
 if __name__ == "__main__":
     check_stocks()
