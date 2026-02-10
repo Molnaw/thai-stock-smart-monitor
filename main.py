@@ -1,53 +1,55 @@
 import yfinance as yf
 import requests
 from datetime import datetime
+import pytz
 
-# --- ข้อมูลการเชื่อมต่อที่คุณให้มาใหม่ ---
+# --- ข้อมูลการเชื่อมต่อ ---
 TOKEN = "7508299140:AAGpdtv8z_ZBUB1eTT7DKwjTqUMFZ8xQJmE"
 CHAT_ID = "8178648877"
 
-# รายชื่อหุ้นเป้าหมาย
-stocks = ['ADVANC.BK', 'TISCO.BK', 'BDMS.BK', 'PTT.BK']
+# รายชื่อหุ้นแยกกลุ่ม
+stocks_new = ['ADVANC.BK', 'TISCO.BK', 'BDMS.BK', 'PTT.BK'] # ชุดใหม่
+stocks_old = ['SIRI.BK', 'BTS.BK', 'TWPC.BK']              # ชุดเก่า
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message}
-    try:
-        response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            print("✅ ส่งข้อความสำเร็จ!")
-        else:
-            print(f"❌ ส่งไม่สำเร็จ: {response.text}")
-    except Exception as e:
-        print(f"Error: {e}")
+    requests.post(url, json=payload)
 
-def check_stocks():
-    now = datetime.now().strftime("%d/%m/%Y %H:%M")
-    report = f"📊 รายงานหุ้นปันผล ({now})\n"
+def get_stock_report(stock_list, title):
+    now = datetime.now(pytz.timezone('Asia/Bangkok')).strftime("%d/%m/%Y %H:%M")
+    report = f"📊 {title} ({now})\n"
     report += "----------------------------\n"
-    
-    for symbol in stocks:
+    for symbol in stock_list:
         stock = yf.Ticker(symbol)
-        # ดึงราคาปัจจุบัน
         df = stock.history(period="2d")
         if not df.empty and len(df) >= 2:
             current_price = df['Close'].iloc[-1]
             prev_price = df['Close'].iloc[-2]
             change = ((current_price - prev_price) / prev_price) * 100
-            
-            # ดึงข้อมูลปันผล
-            info = stock.info
-            div_rate = info.get('dividendRate', 'ไม่มีข้อมูล')
-            
-            report += f"📌 {symbol}\n"
-            report += f"ราคา: {current_price:.2f} ({change:+.2f}%)\n"
-            report += f"ปันผลต่อหุ้น: {div_rate} บาท\n"
-            report += "----------------------------\n"
-        else:
-            report += f"❌ {symbol}: ดึงข้อมูลไม่ได้\n"
-    
-    send_telegram(report)
+            report += f"📌 {symbol}: {current_price:.2f} ({change:+.2f}%)\n"
+    return report
 
-# สั่งให้ทำงานทันทีทุกครั้งที่กดรัน
 if __name__ == "__main__":
-    check_stocks()
+    # ตั้งค่าเวลาไทย
+    tz = pytz.timezone('Asia/Bangkok')
+    now_hour = datetime.now(tz).hour
+
+    # --- ตั้งเงื่อนไขเวลาที่นี่ ---
+    
+    # 1. ถ้าเป็นเวลา 10 โมงเช้า ให้ส่งรายงานหุ้น "ชุดใหม่"
+    if now_hour == 10:
+        msg = get_stock_report(stocks_new, "รายงานหุ้นปันผล (ชุดใหม่)")
+        send_telegram(msg)
+        
+    # 2. ถ้าเป็นเวลา 17 โมงเย็น (5 โมง) ให้ส่งรายงานหุ้น "ชุดเก่า"
+    elif now_hour == 17:
+        msg = get_stock_report(stocks_old, "รายงานหุ้นเดิม (ชุดเก่า)")
+        send_telegram(msg)
+    
+    # 3. พิเศษ: ถ้าคุณกดรันเอง (Manual Run) ในช่วงเวลาอื่น ให้ส่งทั้งคู่มาเลยเพื่อทดสอบ
+    else:
+        msg_new = get_stock_report(stocks_new, "ทดสอบรันเอง: หุ้นชุดใหม่")
+        msg_old = get_stock_report(stocks_old, "ทดสอบรันเอง: หุ้นชุดเก่า")
+        send_telegram(msg_new)
+        send_telegram(msg_old)
