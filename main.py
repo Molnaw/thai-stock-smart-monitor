@@ -1,46 +1,50 @@
 import yfinance as yf
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 
-# --- ตั้งค่าพื้นฐาน ---
-TOKEN = 'YOUR_LINE_OR_TELEGRAM_TOKEN' # ใส่ Token ของคุณตรงนี้
+# --- ข้อมูลการเชื่อมต่อ (ดึงมาจากโปรเจกต์เก่าของคุณ) ---
+TOKEN = "7052912444:AAHh9-97_F8KIDRAsu66fH-vR69piz355jI"
+CHAT_ID = "1328994508"
+
+# รายชื่อหุ้นที่ต้องการเฝ้าดู
 stocks = ['ADVANC.BK', 'TISCO.BK', 'BDMS.BK', 'PTT.BK']
 
-def send_message(msg):
-    print(f"Sending: {msg}")
-    # ใส่โค้ดส่ง Line/Telegram ของคุณที่นี่
+def send_telegram(message):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": message}
+    try:
+        response = requests.post(url, json=payload)
+        print(f"Status: {response.status_code}")
+    except Exception as e:
+        print(f"Error: {e}")
 
-def check_stock_and_dividends():
+def check_stocks():
+    now = datetime.now().strftime("%d/%m/%Y %H:%M")
+    report = f"📊 รายงานหุ้นปันผล ({now})\n"
+    report += "----------------------------\n"
+    
     for symbol in stocks:
         stock = yf.Ticker(symbol)
-        
-        # 1. ดึงข้อมูลราคาปัจจุบัน (ของเดิม)
-        data = stock.history(period='2d')
-        if len(data) < 2: continue
-        
-        current_price = data['Close'].iloc[-1]
-        prev_price = data['Close'].iloc[-0]
-        change_pct = ((current_price - prev_price) / prev_price) * 100
-        
-        # 2. ดึงข้อมูลปันผล (เพิ่มใหม่!)
-        info = stock.info
-        ex_date_timestamp = info.get('exDividendDate')
-        div_rate = info.get('dividendRate', 0)
-        
-        # ตรวจสอบแจ้งเตือนด่วน (ราคาเปลี่ยน > 3%)
-        if abs(change_pct) >= 3.0:
-            emoji = '🔥' if change_pct > 0 else '🚨'
-            send_message(f"⚠️ แจ้งเตือนด่วน: {symbol}\nราคา: {current_price:.2f} ({change_pct:+.2f}%){emoji}")
-
-        # ตรวจสอบแจ้งเตือน XD (เตือนล่วงหน้า 7 วัน)
-        if ex_date_timestamp:
-            ex_date = datetime.fromtimestamp(ex_date_timestamp)
-            days_to_xd = (ex_date - datetime.now()).days
+        # ดึงราคาปัจจุบันและราคาปิดวันก่อน
+        df = stock.history(period="2d")
+        if not df.empty and len(df) >= 2:
+            current_price = df['Close'].iloc[-1]
+            prev_price = df['Close'].iloc[-2]
+            change = ((current_price - prev_price) / prev_price) * 100
             
-            if 0 <= days_to_xd <= 7:
-                send_message(f"📢 แจ้งเตือนปันผล! {symbol}\n📅 วันขึ้น XD: {ex_date.strftime('%d/%m/%Y')}\n💰 ปันผล: {div_rate} บาท/หุ้น\n⏳ อีก {days_to_xd} วันสุดท้าย!")
+            # ดึงข้อมูลปันผล
+            info = stock.info
+            div_rate = info.get('dividendRate', 'ไม่มีข้อมูล')
+            
+            report += f"📌 {symbol}\n"
+            report += f"ราคา: {current_price:.2f} ({change:+.2f}%)\n"
+            report += f"ปันผลต่อหุ้น: {div_rate} บาท\n"
+            report += "----------------------------\n"
+        else:
+            report += f"❌ {symbol}: ดึงข้อมูลไม่ได้\n"
+    
+    send_telegram(report)
 
-# --- ส่วนของการตั้งเวลารัน ---
-now = datetime.utcnow() + timedelta(hours=7) # เวลาไทย
-if now.hour == 10 or now.hour == 17:
-    check_stock_and_dividends()
+# สั่งให้ทำงานทันทีทุกครั้งที่รัน
+if __name__ == "__main__":
+    check_stocks()
